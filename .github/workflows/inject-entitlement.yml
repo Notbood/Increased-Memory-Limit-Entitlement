@@ -1,0 +1,72 @@
+name: Inject memory entitlement
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: Direct download URL of the Madeira IPA
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  inject:
+    runs-on: macos-latest
+    steps:
+      - name: Download IPA
+        env:
+          IPA_URL: ${{ inputs.ipa_url }}
+        run: curl -fL "$IPA_URL" -o in.ipa
+
+      - name: Install ldid
+        run: brew install ldid
+
+      - name: Unpack and locate main binary
+        run: |
+          mkdir work
+          unzip -q in.ipa -d work
+          APP=$(ls -d work/Payload/*.app | head -n 1)
+          EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
+          echo "BIN=$APP/$EXE" >> "$GITHUB_ENV"
+
+      - name: Show entitlements before
+        run: |
+          echo "--- before ---"
+          ldid -e "$BIN" || true
+
+      - name: Merge entitlement into existing ones
+        run: |
+          KEY="com.apple.developer.kernel.increased-memory-limit"
+          ldid -e "$BIN" > ent.plist 2>/dev/null || true
+          if [ ! -s ent.plist ]; then
+            cat > ent.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict/></plist>
+          EOF
+          fi
+          /usr/libexec/PlistBuddy -c "Delete :$KEY" ent.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :$KEY bool true" ent.plist
+          ldid -Sent.plist "$BIN"
+
+      - name: Show entitlements after
+        run: |
+          echo "--- after ---"
+          ldid -e "$BIN"
+
+      - name: Repack IPA
+        run: |
+          cd work
+          zip -qry ../madeira-ent.ipa Payload
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.run_number }}
+        run: |
+          gh release create "ent-$RUN" madeira-ent.ipa \
+            --repo "$REPO" --prerelease \
+            --title "Entitlement-injected IPA #$RUN" \
+            --notes "Adds com.apple.developer.kernel.increased-memory-limit to the main binary. Your sideloader must still re-sign it."
