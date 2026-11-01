@@ -17,7 +17,20 @@ jobs:
       - name: Download IPA
         env:
           IPA_URL: ${{ inputs.ipa_url }}
-        run: curl -fL "$IPA_URL" -o in.ipa
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          re='github.com/([^/]+/[^/]+)/actions/runs/[0-9]+/artifacts/([0-9]+)'
+          if [[ "$IPA_URL" =~ $re ]]; then
+            curl -fL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${BASH_REMATCH[1]}/actions/artifacts/${BASH_REMATCH[2]}/zip" \
+              -o artifact.zip
+            mkdir art && unzip -q artifact.zip -d art
+            cp "$(find art -name '*.ipa' | head -n 1)" in.ipa
+          else
+            curl -fL "$IPA_URL" -o in.ipa
+          fi
 
       - name: Install ldid
         run: brew install ldid
