@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: Direct download URL of the Madeira IPA
+        description: Direct download URL of the IPA
         required: true
 
 permissions:
@@ -71,7 +71,7 @@ jobs:
       - name: Repack IPA
         run: |
           cd work
-          zip -qry ../madeira-ent.ipa Payload
+          zip -qry ../IPA.ipa Payload
 
       - name: Publish release
         env:
@@ -79,7 +79,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN: ${{ github.run_number }}
         run: |
-          gh release create "ent-$RUN" madeira-ent.ipa \
+          gh release create "ent-$RUN" IPA.ipa \
             --repo "$REPO" --prerelease \
             --title "Entitlement-injected IPA #$RUN" \
             --notes "Adds com.apple.developer.kernel.increased-memory-limit to the main binary. Your sideloader must still re-sign it."
